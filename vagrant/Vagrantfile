@@ -1,0 +1,38 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+    config.vm.box = "dummy"
+    config.vm.provider :aws do |aws, override|
+        aws.access_key_id = "e86fbf28aa404759bdb403d8efc4071c"
+        aws.secret_access_key = "638cce5aba36468c84646719a61d998a"
+        aws.endpoint = "http://128.52.128.15:8773/services/Cloud/"
+        aws.keypair_name = "IJulia"
+        aws.region = "nova"
+	aws.instance_type = "lg.12core"
+        aws.ami = "ami-000000bb" # Ubuntu 13.04
+        override.ssh.username = "ubuntu"
+        #override.ssh.host = "128.52.160.116"
+        override.ssh.private_key_path = "../ijulia.pem"
+    end
+    # Remove this for baseboxes that have chef installed
+    config.vm.provision :shell, :inline => "chef-solo --version || (sudo apt-get update && sudo apt-get install -q -y rubygems && sudo gem install chef --version 11.6.0)"
+    config.vm.provision "chef_solo" do |chef|
+        chef.cookbooks_path = "../cookbooks"
+        chef.add_recipe "apt"
+        chef.add_recipe "build-essential"
+	chef.add_recipe "iptables"
+        chef.add_recipe "git"
+        chef.add_recipe "gfortran"
+        chef.add_recipe "ncurses"
+	chef.add_recipe "julia"
+	chef.add_recipe "docker"
+	chef.add_recipe "docker::upstart"
+	chef.add_recipe "shipyard"
+	chef.json = {
+	 "docker" => {
+	  "bind_uri" => "0.0.0.0:4243"
+	 }
+	}
+    end
+end

@@ -1,0 +1,12 @@
+<VirtualHost *:80>
+	ServerAdmin webmaster@localhost
+	DavLockDB /usr/local/apache2/var/DavLock
+	DocumentRoot /files
+	<Location />
+		Dav On
+		Order Allow,Deny
+		Allow from all
+		ForceType text/plain
+	</Location>
+	ErrorLog ${APACHE_LOG_DIR}/error.log	
+</VirtualHost>
