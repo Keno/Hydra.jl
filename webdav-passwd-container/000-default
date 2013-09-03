@@ -1,0 +1,38 @@
+<VirtualHost *:80>
+	ServerAdmin webmaster@localhost
+	DavLockDB /usr/local/apache2/var/DavLock
+	RewriteMap emailmap txt:/files/emailmap.txt
+	RewriteEngine On
+
+	DocumentRoot /documentroot
+	<Directory /documentroot>
+		AuthType Basic
+		AuthName "Restricted Files"
+		AuthUserFile /files/users.pwd
+		Require valid-user
+
+		RewriteEngine On
+	</Directory>
+
+	<Directory /files>
+		Dav On
+		Order Allow,Deny
+		Allow from all
+		ForceType text/plain
+
+		AuthType Basic
+		AuthName "Restricted Files"
+		AuthUserFile /files/users.pwd
+		Require valid-user
+
+		RewriteEngine On
+	</Directory>
+
+	ErrorLog ${APACHE_LOG_DIR}/error.log
+
+	RewriteLog ${APACHE_LOG_DIR}/rewrite.log
+	RewriteLogLevel 9
+
+	RewriteCond %{LA-U:REMOTE_USER} (.+)
+    RewriteRule ^/(.*)$ /files/%{LA-U:REMOTE_USER}/$1 [L]
+</VirtualHost>
