@@ -8,7 +8,9 @@ run sudo add-apt-repository ppa:staticfloat/julianightlies -y
 run DEBIAN_FRONTEND=noninteractive apt-get update -qq -y
 run DEBIAN_FRONTEND=noninteractive apt-get install libpcre3-dev julia -y
 run DEBIAN_FRONTEND=noninteractive apt-get install python-pip python-dev -y
-run pip install ipython jinja2 tornado pyzmq
+run pip install jinja2 tornado pyzmq
+run git clone https://github.com/ipython/ipython.git
+run (cd ipython && python setup.py install)
 run DEBIAN_FRONTEND=noninteractive apt-get install curl -y
 run DEBIAN_FRONTEND=noninteractive apt-get install libnettle4 -y
 run julia -e 'Pkg.init(); Pkg.clone("https://github.com/staticfloat/Nettle.jl"); Pkg.add("IJulia"); Pkg.checkout("IJulia"); Pkg.add("PyPlot"); Pkg.fixup()'
