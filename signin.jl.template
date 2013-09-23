@@ -1,0 +1,3 @@
+ep = IdentityEndpoint(URI("http://127.0.0.1:5000/v2.0"))
+token,endpoints = identify(ep,"foo","bar","00000000000000000000000000000000")
+nova = endpoints[:nova]

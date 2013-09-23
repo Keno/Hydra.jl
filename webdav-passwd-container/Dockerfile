@@ -14,4 +14,9 @@ env LANG               C
 
 run a2enmod rewrite
 run mkdir /documentroot
+run usermod -u 1000 www-data
+run mkdir /dav
+run chown -R www-data:www-data /dav
 ADD 000-default /etc/apache2/sites-enabled/000-default
+EXPOSE 80
+ENTRYPOINT ["apache2","-D","FOREGROUND"]

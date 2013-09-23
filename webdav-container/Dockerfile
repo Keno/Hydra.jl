@@ -12,4 +12,7 @@ env APACHE_LOCK_DIR    /var/lock/apache2
 env APACHE_LOG_DIR     /var/log/apache2
 env LANG               C
 
+run usermod -u 1000 www-data
 ADD 000-default /etc/apache2/sites-enabled/000-default
+EXPOSE 80
+ENTRYPOINT ["apache2","-D","FOREGROUND"]

@@ -1,6 +1,5 @@
 <VirtualHost *:80>
 	ServerAdmin webmaster@localhost
-	DavLockDB /usr/local/apache2/var/DavLock
 	DocumentRoot /files
 	<Location />
 		Dav On

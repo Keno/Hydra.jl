@@ -1,4 +1,8 @@
 settings.yml
+signin.jl
 users
 cert/
+ca/
+frontend/trust
 *.pem
+.DS_Store
