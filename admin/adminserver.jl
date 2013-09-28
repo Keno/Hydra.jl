@@ -4,7 +4,7 @@ using Docker
 using DataFrames
 
 include("utils/utils.jl")
-docker_host = "128.52.160.122:4243"
+docker_host = "127.0.0.1:4243"
 
 #ccall((:gnutls_global_set_log_level,GnuTLS.gnutls),Void,(Cint,),10)
 
