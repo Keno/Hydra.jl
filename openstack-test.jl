@@ -124,13 +124,20 @@ end
 
 function rsync_frontend(sname;ip=nothing)
     serv = get_server(sname; flavor = "m1.4core", fixed_ip=ip)
+    install_collectd(serv)
     rsync(nova,token,serv,"ijulia.pem","frontend/","/home/ubuntu/hydra")
 end
 
-function write_networking(serv)
+function write_networking(serv,special_rules="")
     pp, p = writesto(ssh_cmd(nova,token,serv,"ijulia.pem","cat > /home/ubuntu/iptables.sh") .> STDERR)
-    write(pp,iptables_script)
+    write(pp,iptables_script(special_rules))
     close(pp)
+
+    # Running this script will silently drop the SSH connection temporarily, but the client won't notice.
+    # Since the server doesn't accept packages if the connection isn't already established, this command will never 
+    # return. 10 seconds should be enough to overcome that
+    @async run(ssh_cmd(nova,token,serv,"ijulia.pem","sudo bash /home/ubuntu/iptables.sh"))
+    sleep(10.0)
 
     pp, p = writesto(ssh_cmd(nova,token,serv,"ijulia.pem","sudo sudo sh -c 'cat > /etc/network/interfaces'") .> STDERR)
     write(pp,interfaces)
@@ -140,7 +147,23 @@ function write_networking(serv)
     write(pp,dhcpconfig)
     close(pp)
 
+    pp, p = writesto(ssh_cmd(nova,token,serv,"ijulia.pem","sudo sudo sh -c 'cat > /etc/security/limits.conf'") .> STDERR)
+    write(pp,limits_conf)
+    close(pp)
+
     run(ssh_cmd(nova,token,serv,"ijulia.pem","sudo restart networking"))
+end
+
+function install_collectd(serv)
+    # This command will fail, because there is no configuration yet.
+    # What an odd setup.
+    run(ignorestatus(ssh_cmd(nova,token,serv,"ijulia.pem","sudo apt-get install collectd -y")))
+
+    pp, p = writesto(ssh_cmd(nova,token,serv,"ijulia.pem","sudo sudo sh -c 'cat > /etc/collectd/collectd.conf'") .> STDERR)
+    write(pp,collectd_config)
+    close(pp)
+
+    run(ssh_cmd(nova,token,serv,"ijulia.pem","sudo /etc/init.d/collectd restart"))
 end
 
 internal_network = Network("a4d00c60-f005-400e-a24c-1bf8b8308f98")
@@ -180,7 +203,69 @@ dns-search ijulia.csail.mit.edu
 dns-nameservers 8.8.8.8
 """
 
-iptables_script = """
+collectd_config = """
+FQDNLookup false
+LoadPlugin syslog
+<Plugin syslog>
+    LogLevel info
+</Plugin>
+
+LoadPlugin cpu
+LoadPlugin df
+LoadPlugin disk
+LoadPlugin entropy
+#LoadPlugin ethstat
+LoadPlugin interface
+#LoadPlugin iptables
+LoadPlugin irq
+LoadPlugin load
+LoadPlugin memory
+LoadPlugin network
+LoadPlugin processes
+LoadPlugin rrdtool
+LoadPlugin swap
+LoadPlugin tcpconns
+<Plugin "tcpconns">
+  ListeningPorts false
+  LocalPort "8000"
+</Plugin>
+<Plugin "df">
+  Device "/dev/vda1"
+  IgnoreSelected false
+</Plugin>
+LoadPlugin users
+#LoadPlugin vmem
+<Plugin network>
+    Server "192.168.0.1" "25826"
+</Plugin>
+
+
+<Plugin rrdtool>
+    DataDir "/var/lib/collectd/rrd"
+#   CacheTimeout 120
+#   CacheFlush 900
+#   WritesPerSecond 30
+#   RandomTimeout 0
+#
+# The following settings are rather advanced
+# and should usually not be touched:
+#   StepSize 10
+#   HeartBeat 20
+#   RRARows 1200
+#   RRATimespan 158112000
+#   XFF 0.1
+</Plugin>
+
+Include "/etc/collectd/filters.conf"
+Include "/etc/collectd/thresholds.conf"
+"""
+
+limits_conf = """
+* hard nofile 10000
+* soft nofile 10000
+"""
+
+iptables_script(special_rules) = """
 #!/bin/sh
 # My system IP/set ip address of server
 DOCKER_NETWORK="172.16.0.0/12"
@@ -207,23 +292,14 @@ iptables -A INPUT -p tcp -s \$FRONTEND_NODE -m state --state NEW,ESTABLISHED -j 
 iptables -A FORWARD -p tcp -s \$FRONTEND_NODE -m state --state NEW,ESTABLISHED -j ACCEPT
 iptables -A OUTPUT -p tcp -d \$FRONTEND_NODE -m state --state ESTABLISHED -j ACCEPT
 
-# Allow communication between the fontend node and the containers
-iptables -A FORWARD -s \$DOCKER_NETWORK -d \$FRONTEND_NODE -j ACCEPT
-iptables -A FORWARD -s \$FRONTEND_NODE -d \$DOCKER_NETWORK -j ACCEPT
-iptables -A INPUT -s \$FRONTEND_NODE -d \$DOCKER_NETWORK -j ACCEPT
-
-# Disallow container access to internal network
-iptables -A FORWARD -s \$DOCKER_NETWORK -d 192.168.0.0/24 -j DROP
-
-# But allow container network access otherwise
-iptables -A FORWARD -s \$DOCKER_NETWORK -d 0/0 -j ACCEPT
-iptables -A FORWARD -d \$DOCKER_NETWORK -s 0/0 -j ACCEPT
-
 # Allow DNS resolution (for APT)
 iptables -A OUTPUT -p udp --sport 1024:65535 --dport 53 -m state --state NEW,ESTABLISHED -j ACCEPT
 iptables -A INPUT -p udp --sport 53 --dport 1024:65535 -m state --state ESTABLISHED -j ACCEPT
 iptables -A OUTPUT -p tcp --sport 1024:65535 --dport 53 -m state --state NEW,ESTABLISHED -j ACCEPT
 iptables -A INPUT -p tcp --sport 53 --dport 1024:65535 -m state --state ESTABLISHED -j ACCEPT
+
+# Allow collectd
+iptables -A OUTPUT -p udp --dport 25826 -d 192.168.0.1 -j ACCEPT
 
 # Allow keyserver requests (port 11371)
 iptables -A OUTPUT -p tcp --dport 11371 -m state --state NEW,ESTABLISHED -j ACCEPT
@@ -239,6 +315,18 @@ iptables -A INPUT -p tcp --sport 80 -m state --state ESTABLISHED -j ACCEPT
 iptables -A OUTPUT -p tcp --dport 443 -m state --state NEW,ESTABLISHED -j ACCEPT
 iptables -A INPUT -p tcp --sport 443 -m state --state ESTABLISHED -j ACCEPT
 
+$special_rules
+
+# But allow container network access otherwise
+iptables -A FORWARD -s \$DOCKER_NETWORK -d 0/0 -j ACCEPT
+iptables -A OUTPUT -s \$DOCKER_NETWORK -d 0/0 -j ACCEPT
+iptables -A FORWARD -d \$DOCKER_NETWORK -s 0/0 -j ACCEPT
+iptables -A INPUT -d \$DOCKER_NETWORK -s 0/0 -j ACCEPT
+
 # make sure nothing else comes into this box
-iptables -A INPUT -j DROP
+iptables -N LOGGING
+iptables -A INPUT -j LOGGING
+iptables -A OUTPUT -j LOGGING
+iptables -A LOGGING -m limit --limit 2/second -j LOG --log-prefix "IPTables-Dropped: " --log-level 4
+iptables -A LOGGING -j DROP
 """

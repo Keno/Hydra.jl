@@ -134,7 +134,11 @@ if !disable_webdav
 
 end
 
-isdead(host,id) = Docker.inspect_container(host,id)["State"]["Running"] == false
+isdead(host,id) = try
+    Docker.inspect_container(host,id)["State"]["Running"] == false
+catch
+    true
+end
 
 function retrieve_container_id(cert,servicename)
     #show(cert)

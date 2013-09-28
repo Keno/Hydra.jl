@@ -20,40 +20,51 @@ function get_uid(cert)
     uid
 end
 
-function start_rproxy(sess,upstream)
-    c1 = Condition()
-    c2 = Condition()
-    @async begin
-        try
-            while isopen(sess) && isopen(upstream)
-                write(upstream,readavailable(sess))
-            end
-        catch e
-            showerror(STDOUT,e)
-            println(STDOUT)
-            Base.show_backtrace(STDOUT,Base.catch_backtrace())
-        end
-        notify(c1)
-    end
-    @async begin
-        try
-            while isopen(sess) && isopen(upstream)
-                write(sess,readavailable(upstream))
-            end
-        catch e
-            showerror(STDOUT,e)
-            println(STDOUT)
-            Base.show_backtrace(STDOUT,Base.catch_backtrace())
-        end
-        notify(c2)
-    end
-    @async begin
-        wait(c1)
-        wait(c2)
-        isopen(sess) && close(sess)
-        isopen(upstream) && close(upstream)
-    end
+n = 0
 
+function start_rproxy(sess,upstream)
+    c1 = RemoteRef()
+    c2 = RemoteRef()
+    @async begin
+        try
+            while isopen(upstream) && !eof(sess)
+                data = readavailable(sess)
+                if isopen(upstream) && length(data) > 0
+                    write(upstream,data)
+                else
+                    break
+                end
+            end
+        catch e
+            println(STDOUT)
+            showerror(STDOUT,e)
+            Base.show_backtrace(STDOUT,Base.catch_backtrace())
+        end
+        put(c1,())
+    end
+    @async begin
+        try
+            while isopen(sess) && !eof(upstream)
+                data = readavailable(upstream)
+                if isopen(sess) && length(data) > 0
+                    write(sess,data)
+                else
+                    break
+                end
+            end
+        catch e
+            println(STDOUT)
+            showerror(STDOUT,e)
+            Base.show_backtrace(STDOUT,Base.catch_backtrace())
+        end
+        put(c2,())
+    end
+    @async begin
+        take(c1)
+        take(c2)
+        try; isopen(sess) && close(sess); end
+        try; isopen(upstream) && close(upstream); end
+    end
 end
 
 ssh_cmd(docker_host, cmd; port = 22) = 
@@ -79,7 +90,7 @@ GnuTLS.add_trusted_ca(auth,"trust/mitClient.crt")
 
 function accept_sess(server,req)
     sess = GnuTLS.Session(true)
-    set_priority_string!(sess)
+    set_priority_string!(sess,"NONE:+VERS-TLS-ALL:+MAC-ALL:+RSA:+AES-128-CBC:+SIGN-ALL:+COMP-NULL")
     set_credentials!(sess,auth)
     GnuTLS.set_prompt_client_certificate!(sess,req)
     gc()

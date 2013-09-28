@@ -3,6 +3,6 @@ signin.jl
 users
 cert/
 ca/
-frontend/trust
+trust/
 *.pem
 .DS_Store
