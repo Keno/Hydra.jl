@@ -17,6 +17,5 @@ run (cd ipython && python setup.py install)
 run DEBIAN_FRONTEND=noninteractive apt-get install curl -y
 run DEBIAN_FRONTEND=noninteractive apt-get install libnettle4 -y
 run julia -e 'Pkg.init(); Pkg.clone("https://github.com/staticfloat/Nettle.jl"); Pkg.add("IJulia"); Pkg.checkout("IJulia"); Pkg.add("PyPlot"); Pkg.add("Gadfly"); Pkg.checkout("JSON"); Pkg.fixup()'
-run mkdir /.ipython/profile_default
 run (echo "from IPython.external.mathjax import install_mathjax"; echo "install_mathjax(dest=\"/.ipython/profile_julia/static/mathjax\")") | python
 ADD 02assumeyes /etc/apt/apt.conf.d/02assumeyes

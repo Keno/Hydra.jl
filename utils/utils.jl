@@ -36,9 +36,11 @@ function start_rproxy(sess,upstream)
                 end
             end
         catch e
-            println(STDOUT)
-            showerror(STDOUT,e)
-            Base.show_backtrace(STDOUT,Base.catch_backtrace())
+            if !isa(e,GnuTLS.GnuTLSException) || !GnuTLS.is_premature_eof(e)
+                println(STDOUT)
+                showerror(STDOUT,e)
+                Base.show_backtrace(STDOUT,Base.catch_backtrace())
+            end
         end
         put(c1,())
     end
@@ -53,9 +55,11 @@ function start_rproxy(sess,upstream)
                 end
             end
         catch e
-            println(STDOUT)
-            showerror(STDOUT,e)
-            Base.show_backtrace(STDOUT,Base.catch_backtrace())
+            if !isa(e,GnuTLS.GnuTLSException) || !GnuTLS.is_premature_eof(e)
+                println(STDOUT)
+                showerror(STDOUT,e)
+                Base.show_backtrace(STDOUT,Base.catch_backtrace())
+            end
         end
         put(c2,())
     end
@@ -90,7 +94,7 @@ GnuTLS.add_trusted_ca(auth,"trust/mitClient.crt")
 
 function accept_sess(server,req)
     sess = GnuTLS.Session(true)
-    set_priority_string!(sess,"NONE:+VERS-TLS-ALL:+MAC-ALL:+RSA:+AES-128-CBC:+SIGN-ALL:+COMP-NULL")
+    set_priority_string!(sess)
     set_credentials!(sess,auth)
     GnuTLS.set_prompt_client_certificate!(sess,req)
     gc()
@@ -99,7 +103,9 @@ function accept_sess(server,req)
     try
         handshake!(sess)
     catch e
-        println("Error establishing SSL connection: ", e)
+        if !isa(e,GnuTLS.GnuTLSException) || !GnuTLS.is_premature_eof(e)
+            println("Error establishing SSL connection: ", e)
+        end
         close(client)
         return nothing
     end

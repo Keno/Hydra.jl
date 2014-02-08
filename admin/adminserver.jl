@@ -67,18 +67,10 @@ adminserver(4244) do sess
     start_rproxy(sess,connect("127.0.0.1",4243))
 end
 
-adminserver(8081) do sess
+adminserver(8080) do sess
     container_id = find_collectd_container(docker_host)
     args = (Docker.docker_uri(docker_host).host,uint16(Docker.getNattedPort(docker_host,container_id,8080)))
     start_rproxy(sess,connect(args...))
 end
-
-serv = listen(8080)
-while true
-    sess = accept(serv)
-    container_id = find_collectd_container(docker_host)
-    args = (Docker.docker_uri(docker_host).host,uint16(Docker.getNattedPort(docker_host,container_id,8080)))
-    start_rproxy(sess,connect(args...))
-end  
 
 wait()

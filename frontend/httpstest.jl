@@ -56,7 +56,7 @@ function start_ijulia_container(docker_host,working_dir)
                      ports       =  [8998],
                      volumes     =  ["/files"],
                      pwd         =  "/files")["Id"] 
-    Docker.start_container(docker_host,worker_id; binds = [working_dir=>"/files"])
+    Docker.start_container(docker_host,worker_id; binds = [working_dir=>"/files"], ports = [8998])
     worker_id
 end
 
@@ -242,7 +242,8 @@ for (servicename,service) in services
                 end
             end
         catch e
-            println("FATAL Server Error:", e)
+            println("FATAL Server Error:")
+            Base.showerror(STDOUT,e,catch_backtrace())
         end
     end
 end
@@ -278,7 +279,10 @@ if !disable_webdav
             end
         end
     catch e
-        println("FATAL Server Error:", e)
+        if !is_premature_eof(e)
+            println("FATAL Server Error:")
+            Base.showerror(STDOUT,e,catch_backtrace())
+        end
     end
 end
 

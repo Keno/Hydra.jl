@@ -12,7 +12,7 @@ function build_backend(sname)
 end
 
 
-backend_networking(sname) = backend_networking(get_server(sname; flavor = "m1.12core"))
+backend_networking(sname) = backend_networking(get_server(sname; flavor = "lg.12core"))
 function backend_networking(serv::OpenStack.Server)
     write_networking(serv,"""
         # Allow communication between the fontend node and the containers
@@ -20,9 +20,14 @@ function backend_networking(serv::OpenStack.Server)
         iptables -A FORWARD -s \$FRONTEND_NODE -d \$DOCKER_NETWORK -j ACCEPT
         iptables -A INPUT -s \$FRONTEND_NODE -d \$DOCKER_NETWORK -j ACCEPT
 
+        # Allow communication between the fontend node and the containers
+        iptables -A FORWARD -s \$DOCKER_NETWORK -d \$STAGING_NODE -j ACCEPT
+        iptables -A FORWARD -s \$STAGING_NODE -d \$DOCKER_NETWORK -j ACCEPT
+        iptables -A INPUT -s \$STAGING_NODE -d \$DOCKER_NETWORK -j ACCEPT
+
         # Disallow inter-container communication
-        iptables -A FORWARD -s \$DOCKER_NETWORK -d \$DOCKER_NETWORK -j ACCEPT
-        iptables -A FORWARD -d \$DOCKER_NETWORK -s \$DOCKER_NETWORK -j ACCEPT
+        iptables -A FORWARD -s \$DOCKER_NETWORK -d \$DOCKER_NETWORK -j DROP
+        iptables -A FORWARD -d \$DOCKER_NETWORK -s \$DOCKER_NETWORK -j DROP
 
         # Disallow container access to internal network
         iptables -A FORWARD -s \$DOCKER_NETWORK -d 192.168.0.0/24 -j DROP
@@ -46,7 +51,9 @@ if length(ARGS) >= 1
     elseif ARGS[1] == "network"
         f = backend_networking
     elseif ARGS[1] == "container"
-        f = build_docker_container
+        f = build_docker_containers
+    elseif ARGS[1] == "build"
+        f = build_backend
     else
         error("Unrecognized command")
     end
@@ -57,8 +64,8 @@ if length(ARGS) != 2
     error("must specify a container")
 end
 if ARGS[2] == "all"
-    for b in ["ijulia-backend-0","ijulia-backend-2","ijulia-backend-3"]
-        f(b)
+    for b in ["ijulia-backend-0","ijulia-backend-2","ijulia_backend-3"]
+        @async f(b)
     end
 else
     f(ARGS[2])

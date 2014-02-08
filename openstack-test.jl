@@ -1,5 +1,6 @@
 using OpenStack
 using JSON
+using URIParser
 
 function rsync(nova,token,server::Server,private_key,lpath,rpath; port = 22)
     ssh = "ssh -p $port -o StrictHostKeyChecking=no -i $private_key"
@@ -80,7 +81,7 @@ function provision(serv,recipes)
 
     cmd = ssh_cmd(nova,token,serv,"ijulia.pem",
         "(chef-solo --version || 
-         (sudo apt-get update && sudo apt-get install -q -y rubygems && sudo gem install chef --version 11.6.0)) && 
+         (sudo apt-get update && sudo apt-get install -q -y rubygems ruby1.9.3 && sudo gem install chef --version 11.6.0)) && 
          sudo chef-solo -c /tmp/solo.rb -j /tmp/solo.json")
 
     run(cmd,(STDIN,STDOUT,STDERR))
@@ -107,7 +108,7 @@ function install_julia_dependencies(serv)
     run(ssh_cmd(nova,token,serv,"ijulia.pem","""git config --global user.email "kfischer@csail.mit.edu" """))
     run(ssh_cmd(nova,token,serv,"ijulia.pem","""git config --global user.name "Keno Fischer" """))
     run(ssh_cmd(nova,token,serv,"ijulia.pem","""julia -e 'Pkg.update(); Pkg.add("BinDeps"); Pkg.checkout("BinDeps"); Pkg.add("YAML"); Pkg.add("GnuTLS"); Pkg.checkout("GnuTLS"); Pkg.add("Morsel"); Pkg.add("JSON"); Pkg.add("SQLite"); Pkg.checkout("SQLite"); Pkg.add("Docker"); Pkg.add("Nettle")'"""))
-    for pkg in ["HttpServer","HttpParser","Docker"]
+    for pkg in ["HttpServer","HttpParser","Docker","GnuTLS"]
         run(ssh_cmd(nova,token,serv,"ijulia.pem","""bash -c 'cd /home/ubuntu/.julia/$pkg && git checkout master && git pull https://github.com/loladiro/$pkg.jl'"""))
     end
 end
@@ -170,7 +171,9 @@ internal_network = Network("a4d00c60-f005-400e-a24c-1bf8b8308f98")
 inet_network = Network("0a1d0a27-cffa-4de3-92c5-9d3fd3f2e74d")
 
 frontend_instance = get_server("ijulia-frontend-1"; flavor = "m1.4core", fixed_ip="128.52.128.95")
+staging_instance = get_server("ijulia-staging"; flavor = "m1.4core", fixed_ip="128.52.128.98")
 frontend_ip = ips(nova,token,frontend_instance,"internal")[1]
+staging_ip = ips(nova,token,staging_instance,"internal")[1]
 
 dhcpconfig = """
 option rfc3442-classless-static-routes code 121 = array of unsigned integer 8;
@@ -270,6 +273,7 @@ iptables_script(special_rules) = """
 # My system IP/set ip address of server
 DOCKER_NETWORK="172.16.0.0/12"
 FRONTEND_NODE="$(string(frontend_ip))"
+STAGING_NODE="$(string(staging_ip))"
 
 # Flushing all rules
 iptables -F
@@ -287,10 +291,15 @@ iptables -A FORWARD -o lo -j ACCEPT
 iptables -A INPUT -p tcp -s 0/0 --sport 513:65535 --dport 22 -m state --state NEW,ESTABLISHED -j ACCEPT
 iptables -A OUTPUT -p tcp -d 0/0 --sport 22 --dport 513:65535 -m state --state ESTABLISHED -j ACCEPT
 
-# Allow incoming docker
+# Allow incoming docker (frontend)
 iptables -A INPUT -p tcp -s \$FRONTEND_NODE -m state --state NEW,ESTABLISHED -j ACCEPT
 iptables -A FORWARD -p tcp -s \$FRONTEND_NODE -m state --state NEW,ESTABLISHED -j ACCEPT
 iptables -A OUTPUT -p tcp -d \$FRONTEND_NODE -m state --state ESTABLISHED -j ACCEPT
+
+# Allow incoming docker (staging)
+iptables -A INPUT -p tcp -s \$STAGING_NODE -m state --state NEW,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -p tcp -s \$STAGING_NODE -m state --state NEW,ESTABLISHED -j ACCEPT
+iptables -A OUTPUT -p tcp -d \$STAGING_NODE -m state --state ESTABLISHED -j ACCEPT
 
 # Allow DNS resolution (for APT)
 iptables -A OUTPUT -p udp --sport 1024:65535 --dport 53 -m state --state NEW,ESTABLISHED -j ACCEPT
@@ -318,10 +327,10 @@ iptables -A INPUT -p tcp --sport 443 -m state --state ESTABLISHED -j ACCEPT
 $special_rules
 
 # But allow container network access otherwise
-iptables -A FORWARD -s \$DOCKER_NETWORK -d 0/0 -j ACCEPT
-iptables -A OUTPUT -s \$DOCKER_NETWORK -d 0/0 -j ACCEPT
-iptables -A FORWARD -d \$DOCKER_NETWORK -s 0/0 -j ACCEPT
-iptables -A INPUT -d \$DOCKER_NETWORK -s 0/0 -j ACCEPT
+iptables -A FORWARD -s \$DOCKER_NETWORK -d 0/0 -m state --state NEW,ESTABLISHED -j ACCEPT
+iptables -A OUTPUT -s \$DOCKER_NETWORK -d 0/0 -m state --state NEW,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -d \$DOCKER_NETWORK -s 0/0 -m state --state ESTABLISHED -j ACCEPT
+iptables -A INPUT -d \$DOCKER_NETWORK -s 0/0 -m state --state ESTABLISHED -j ACCEPT
 
 # make sure nothing else comes into this box
 iptables -N LOGGING

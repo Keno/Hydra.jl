@@ -30,6 +30,7 @@ admin_networking(serv::OpenStack.Server) = write_networking(serv,"""
 
         # Allow incoming collectd metrics
         iptables -A INPUT -p udp --dport 25826 -s 192.168.0.0/24 -j ACCEPT
+        iptables -A FORWARD -p udp --dport 25826 -s 192.168.0.0/24 -j ACCEPT
 
         # Allow free access to the local network from within the container
         iptables -A FORWARD -d \$DOCKER_NETWORK -j ACCEPT
